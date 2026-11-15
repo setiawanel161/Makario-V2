@@ -1,41 +1,5 @@
 import { PrismaClient, type BuilderTier } from '@prisma/client';
-
-/**
- * Workspace bootstrap catalog. Presets are code-defined because the current
- * Prisma schema intentionally has no persisted WorkspacePreset model. The
- * workspace provisioning flow can consume these definitions in a later phase.
- */
-export const SMART_WORKFLOW_PRESETS = {
-  Personal: {
-    name: 'Personal',
-    description: 'A private home for personal notes, projects, and goals.',
-    pages: ['Getting Started', 'Projects', 'Journal', 'Goals'],
-    databases: [
-      { name: 'Tasks', properties: ['Status', 'Due Date', 'Priority'] },
-      { name: 'Notes', properties: ['Category', 'Created At'] },
-    ],
-  },
-  Team: {
-    name: 'Team',
-    description: 'A shared hub for team planning, decisions, and delivery.',
-    pages: ['Team Home', 'Projects', 'Meeting Notes', 'Handbook'],
-    databases: [
-      { name: 'Tasks', properties: ['Status', 'Assignee', 'Due Date', 'Priority'] },
-      { name: 'Projects', properties: ['Status', 'Owner', 'Start Date', 'Due Date'] },
-      { name: 'Meeting Notes', properties: ['Date', 'Attendees', 'Project'] },
-    ],
-  },
-  School: {
-    name: 'School',
-    description: 'A study hub for courses, assignments, and class notes.',
-    pages: ['School Home', 'Courses', 'Study Notes', 'Study Planner'],
-    databases: [
-      { name: 'Assignments', properties: ['Status', 'Course', 'Due Date', 'Priority'] },
-      { name: 'Courses', properties: ['Instructor', 'Term', 'Room'] },
-      { name: 'Study Sessions', properties: ['Date', 'Course', 'Duration'] },
-    ],
-  },
-} as const;
+import { SMART_WORKFLOW_PRESETS } from '../src/server/workspaces/presets';
 
 const badges: Array<{
   slug: string;
@@ -107,7 +71,11 @@ async function main(): Promise<void> {
   );
 
   console.info(`Seeded ${badges.length} achievement badges.`);
-  console.info(`Available workflow presets: ${Object.keys(SMART_WORKFLOW_PRESETS).join(', ')}.`);
+  console.info(
+    `Available workflow presets: ${Object.values(SMART_WORKFLOW_PRESETS)
+      .map((preset) => preset.name)
+      .join(', ')}.`,
+  );
 }
 
 main()
