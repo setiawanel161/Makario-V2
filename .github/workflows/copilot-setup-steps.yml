@@ -1,0 +1,109 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/copilot-setup-steps.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/copilot-setup-steps.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    name: Prepare VM Environment for Copilot Agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: 1
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/workspace_db?schema=public
+      AUTH_SECRET: copilot-vm-secret-key-placeholder
+      AUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install & Start PostgreSQL Service
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql postgresql-contrib
+          sudo service postgresql start
+          sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+          sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = 'workspace_db'" | grep -q 1 || sudo -u postgres psql -c "CREATE DATABASE workspace_db;"
+
+      - name: Prepare Local Environment File
+        run: |
+          if [ -f ".env.example" ] && [ ! -f ".env" ]; then
+            cp .env.example .env
+          fi
+
+      - name: Detect Project State (Pre-Scaffold vs Post-Scaffold)
+        id: detect
+        run: |
+          [ -f "package.json" ] && echo "has_pkg=true" >> $GITHUB_OUTPUT || echo "has_pkg=false" >> $GITHUB_OUTPUT
+          [ -f "package-lock.json" ] && echo "has_lock=true" >> $GITHUB_OUTPUT || echo "has_lock=false" >> $GITHUB_OUTPUT
+          [ -f "prisma/schema.prisma" ] && echo "has_prisma=true" >> $GITHUB_OUTPUT || echo "has_prisma=false" >> $GITHUB_OUTPUT
+          if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+            echo "has_migrations=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_migrations=false" >> $GITHUB_OUTPUT
+          fi
+          [ -f "prisma/seed.ts" ] && echo "has_seed=true" >> $GITHUB_OUTPUT || echo "has_seed=false" >> $GITHUB_OUTPUT
+          if ls playwright.config.* 1> /dev/null 2>&1; then
+            echo "has_playwright=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_playwright=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Cache npm Dependencies
+        if: steps.detect.outputs.has_pkg == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-copilot-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-copilot-node-
+
+      - name: Pre-Install Node Dependencies
+        if: steps.detect.outputs.has_pkg == 'true'
+        run: |
+          if [ "${{ steps.detect.outputs.has_lock }}" == "true" ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Generate Prisma Client & Sync Database
+        if: steps.detect.outputs.has_pkg == 'true' && steps.detect.outputs.has_prisma == 'true'
+        run: |
+          npx prisma generate
+          if [ "${{ steps.detect.outputs.has_migrations }}" == "true" ]; then
+            npx prisma migrate deploy
+          else
+            npx prisma db push --accept-data-loss
+          fi
+
+      - name: Seed Initial Workspace Data
+        if: steps.detect.outputs.has_pkg == 'true' && steps.detect.outputs.has_prisma == 'true' && steps.detect.outputs.has_seed == 'true'
+        run: |
+          if grep -q '"seed"' package.json; then
+            npx prisma db seed
+          fi
+
+      - name: Pre-Install Playwright Browser (Auto-enabled when configured)
+        if: steps.detect.outputs.has_pkg == 'true' && steps.detect.outputs.has_playwright == 'true'
+        run: npx playwright install --with-deps chromium
