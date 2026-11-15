@@ -1,11 +1,17 @@
-export default function Home(): React.JSX.Element {
-  return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-6 py-12">
-      <p className="text-sm font-medium text-ink-secondary">Makario · Connected workspace</p>
-      <h1 className="mt-3 text-4xl font-bold tracking-tight">Your workspace starts here.</h1>
-      <p className="mt-4 max-w-xl text-ink-secondary">
-        A modular, local-first workspace for connected notes, workflows, and relational data.
-      </p>
-    </main>
-  );
+import { redirect } from 'next/navigation';
+import { auth } from '@/server/auth/auth';
+import { prisma } from '@/server/db/prisma';
+
+export default async function HomePage(): Promise<never> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    redirect('/login');
+  }
+
+  const membership = await prisma.workspaceMember.findFirst({
+    where: { userId: session.user.id },
+    orderBy: { joinedAt: 'asc' },
+    select: { workspace: { select: { slug: true } } },
+  });
+  redirect(membership ? `/${membership.workspace.slug}` : '/onboarding');
 }
