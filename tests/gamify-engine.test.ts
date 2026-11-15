@@ -129,6 +129,7 @@ describe('gamification engine', () => {
       ['CREATE_PAGE', 15],
       ['CREATE_DATABASE', 25],
       ['PUBLISH_TEMPLATE', 100],
+      ['CREATE_WORKSPACE', 50],
     ] as const;
 
     for (const [actionType, xpDelta] of actions) {
@@ -145,7 +146,7 @@ describe('gamification engine', () => {
       ).resolves.toMatchObject({ status: 'awarded', xpDelta });
     }
 
-    expect(database.profiles.get('user-2')?.totalXp).toBe(150);
+    expect(database.profiles.get('user-2')?.totalXp).toBe(200);
   });
 
   it('does not award XP when gamification is disabled', async () => {

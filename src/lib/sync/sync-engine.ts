@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SyncMutationType } from '@/types/sync';
 import type { JsonObject, JsonValue } from '@/types/workspace';
 import {
   type LocalEntityRecord,
@@ -10,6 +11,8 @@ import {
 
 export const SYNC_BATCH_SIZE = 50;
 export const SYNC_DEBOUNCE_MS = 300;
+const RETRY_BASE_MS = 1000;
+const RETRY_MAX_MS = 30_000;
 
 export interface VersionedField {
   value: JsonValue;
@@ -19,18 +22,33 @@ export interface VersionedField {
 export type VersionedRecord = Record<string, VersionedField>;
 export type SyncTransport = (
   mutations: readonly OutboxMutation[],
-) => Promise<readonly string[]>;
+) => Promise<SyncTransportResult>;
 
-interface SyncEngineOptions {
+export interface SyncTransportResult {
+  acknowledged: readonly string[];
+  awardedXp: readonly { actionType: string; xpDelta: number; referenceId: string }[];
+}
+
+export interface SyncEngineOptions {
   db?: WorkspaceDatabase;
   transport: SyncTransport;
   debounceMs?: number;
   onError?: (error: unknown) => void;
+  onXpAwarded?: (awards: SyncTransportResult['awardedXp']) => void;
   isOnline?: () => boolean;
 }
 
 const syncPushResponseSchema = z.object({
   acknowledged: z.array(z.string()),
+  awardedXp: z
+    .array(
+      z.object({
+        actionType: z.string(),
+        xpDelta: z.number().int().positive(),
+        referenceId: z.string(),
+      }),
+    )
+    .default([]),
 });
 
 export const pushSyncBatch: SyncTransport = async (mutations) => {
@@ -47,7 +65,7 @@ export const pushSyncBatch: SyncTransport = async (mutations) => {
   if (!result.success) {
     throw new Error('Sync push returned an invalid acknowledgement payload.');
   }
-  return result.data.acknowledged;
+  return result.data;
 };
 
 function timestampValue(value: string): number {
@@ -88,10 +106,12 @@ export class SyncEngine {
   private readonly transport: SyncTransport;
   private readonly debounceMs: number;
   private readonly onError: (error: unknown) => void;
+  private readonly onXpAwarded: (awards: SyncTransportResult['awardedXp']) => void;
   private readonly isOnline: () => boolean;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private activeFlush: Promise<number> | undefined;
   private started = false;
+  private retryAttempt = 0;
 
   private readonly onlineListener = (): void => {
     void this.flushPending().catch(this.onError);
@@ -102,6 +122,7 @@ export class SyncEngine {
     this.transport = options.transport;
     this.debounceMs = options.debounceMs ?? SYNC_DEBOUNCE_MS;
     this.onError = options.onError ?? ((error: unknown) => console.error('Sync operation failed:', error));
+    this.onXpAwarded = options.onXpAwarded ?? (() => undefined);
     this.isOnline =
       options.isOnline ??
       (() => typeof window !== 'undefined' && navigator.onLine);
@@ -173,6 +194,7 @@ export class SyncEngine {
         if (this.activeFlush === flush) {
           this.activeFlush = undefined;
         }
+        this.scheduleRetry();
       },
     );
     return flush;
@@ -205,6 +227,17 @@ export class SyncEngine {
     }, this.debounceMs);
   }
 
+  private scheduleRetry(): void {
+    if (!this.isOnline()) return;
+    const delay = Math.min(RETRY_BASE_MS * 2 ** this.retryAttempt, RETRY_MAX_MS);
+    this.retryAttempt = Math.min(this.retryAttempt + 1, 5);
+    if (this.timer !== undefined) clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.flushPending().catch(this.onError);
+    }, delay);
+  }
+
   private async flushBatches(): Promise<number> {
     if (!this.isOnline()) {
       return 0;
@@ -217,7 +250,8 @@ export class SyncEngine {
         return acknowledgedCount;
       }
 
-      const acknowledged = await this.transport(batch);
+      const response = await this.transport(batch);
+      const acknowledged = response.acknowledged;
       const batchKeys = new Set(batch.map((mutation) => mutation.idempotencyKey));
       const acknowledgedKeys = new Set(acknowledged);
       if (acknowledgedKeys.size !== acknowledged.length) {
@@ -228,8 +262,11 @@ export class SyncEngine {
           throw new Error(`Sync transport acknowledged an unknown mutation: ${key}`);
         }
       }
+      if (acknowledgedKeys.size > 0 && response.awardedXp.length > 0) {
+        this.onXpAwarded(response.awardedXp);
+      }
       if (acknowledgedKeys.size === 0) {
-        return acknowledgedCount;
+        throw new Error('Sync transport acknowledged no mutations.');
       }
 
       const acknowledgedSequences = batch
@@ -238,8 +275,10 @@ export class SyncEngine {
         .filter((seq): seq is number => seq !== undefined);
       await this.db.outbox.bulkDelete(acknowledgedSequences);
       acknowledgedCount += acknowledgedSequences.length;
+      this.retryAttempt = 0;
 
       if (acknowledgedKeys.size < batch.length) {
+        this.scheduleRetry();
         return acknowledgedCount;
       }
     }
@@ -252,10 +291,26 @@ export function createMutation(input: {
   entityType: SyncEntityType;
   entityId: string;
   changes: JsonObject;
+  type?: SyncMutationType;
+  fieldTimestamps?: Record<string, string>;
   createdAt?: string;
 }): OutboxMutation {
+  const type =
+    input.type ??
+    (input.entityType === 'page'
+      ? 'UPDATE_PAGE'
+      : input.entityType === 'block'
+        ? 'UPDATE_BLOCK'
+        : input.entityType === 'rowProperty'
+          ? 'UPSERT_ROW_PROP'
+          : (() => {
+              throw new RangeError(
+                `A sync operation type is required for ${input.entityType} mutations.`,
+              );
+            })());
   return {
     ...input,
+    type,
     createdAt: input.createdAt ?? new Date().toISOString(),
   };
 }

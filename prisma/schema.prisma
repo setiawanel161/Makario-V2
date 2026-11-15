@@ -154,6 +154,7 @@ model Page {
   allowTemplateClone Boolean   @default(false)
   cloneCount         Int       @default(0)
   revision           BigInt    @default(1)
+  fieldTimestamps    Json      @default("{}")
   deletedAt          DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -175,17 +176,18 @@ model Page {
 }
 
 model Block {
-  id             String    @id @default(uuid())
-  pageId         String
-  parentBlockId  String?
-  syncedSourceId String?
-  type           BlockType @default(PARAGRAPH)
-  content        Json      @default("{}")
-  orderIndex     String    @default("a0")
-  revision       BigInt    @default(1)
-  deletedAt      DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  pageId          String
+  parentBlockId   String?
+  syncedSourceId  String?
+  type            BlockType @default(PARAGRAPH)
+  content         Json      @default("{}")
+  orderIndex      String    @default("a0")
+  revision        BigInt    @default(1)
+  fieldTimestamps Json      @default("{}")
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   page          Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
   parentBlock   Block?    @relation("BlockHierarchy", fields: [parentBlockId], references: [id], onDelete: Cascade)
@@ -226,14 +228,16 @@ enum ViewLayout {
 }
 
 model DatabaseProperty {
-  id             String       @id @default(uuid())
-  databasePageId String
-  name           String
-  type           PropertyType @default(TEXT)
-  config         Json         @default("{}")
-  orderIndex     String       @default("a0")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id              String       @id @default(uuid())
+  databasePageId  String
+  name            String
+  type            PropertyType @default(TEXT)
+  config          Json         @default("{}")
+  orderIndex      String       @default("a0")
+  revision        BigInt       @default(1)
+  fieldTimestamps Json         @default("{}")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   databasePage Page                  @relation("DatabaseSchema", fields: [databasePageId], references: [id], onDelete: Cascade)
   rowValues    DatabaseRowProperty[]
@@ -243,11 +247,13 @@ model DatabaseProperty {
 }
 
 model DatabaseRowProperty {
-  id         String   @id @default(uuid())
-  rowPageId  String
-  propertyId String
-  value      Json
-  updatedAt  DateTime @updatedAt
+  id              String   @id @default(uuid())
+  rowPageId       String
+  propertyId      String
+  value           Json
+  revision        BigInt   @default(1)
+  fieldTimestamps Json     @default("{}")
+  updatedAt       DateTime @updatedAt
 
   rowPage  Page             @relation("RowValues", fields: [rowPageId], references: [id], onDelete: Cascade)
   property DatabaseProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -266,6 +272,8 @@ model DatabaseView {
   visibleProperties Json       @default("[]")
   groupByPropertyId String?
   orderIndex        String     @default("a0")
+  revision          BigInt     @default(1)
+  fieldTimestamps   Json       @default("{}")
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -297,8 +305,8 @@ model Comment {
 // ==========================================
 
 enum BuilderTier {
-  APPRENTICE_SCRIBE  // Tier 1: 0 - 499 XP
-  SYSTEMS_ARCHITECT  // Tier 2: 500 - 2,499 XP
+  APPRENTICE_SCRIBE // Tier 1: 0 - 499 XP
+  SYSTEMS_ARCHITECT // Tier 2: 500 - 2,499 XP
   GRANDMASTER_WEAVER // Tier 3: 2,500+ XP
 }
 
@@ -355,4 +363,16 @@ model UserBadge {
   badge AchievementBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
   @@unique([userId, badgeId])
+}
+
+model SyncMutationReceipt {
+  idempotencyKey String   @id
+  workspaceId    String
+  userId         String
+  mutationType   String
+  entityId       String
+  createdAt      DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
 }

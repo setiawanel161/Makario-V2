@@ -6,6 +6,7 @@ export const XP_REWARDS = {
   CREATE_PAGE: 15,
   CREATE_DATABASE: 25,
   PUBLISH_TEMPLATE: 100,
+  CREATE_WORKSPACE: 50,
 } as const;
 
 export type XpActionType = keyof typeof XP_REWARDS;
@@ -146,11 +147,10 @@ export function calculateStreakUpdate(
   };
 }
 
-const prismaGamificationDatabase: GamificationDatabase = {
-  transaction: <T>(work: (transaction: GamificationTransaction) => Promise<T>) =>
-    prisma.$transaction(
-      async (transaction) =>
-        work({
+export function createPrismaGamificationTransaction(
+  transaction: Prisma.TransactionClient,
+): GamificationTransaction {
+  return {
           getProfile: async (userId) => {
             const profile = await transaction.builderProfile.findUnique({ where: { userId } });
             return profile === null ? null : profileSnapshot(profile);
@@ -233,62 +233,76 @@ const prismaGamificationDatabase: GamificationDatabase = {
             });
             return profileSnapshot(profile);
           },
-        }),
+  };
+}
+
+const prismaGamificationDatabase: GamificationDatabase = {
+  transaction: <T>(work: (transaction: GamificationTransaction) => Promise<T>) =>
+    prisma.$transaction(
+      async (transaction) => work(createPrismaGamificationTransaction(transaction)),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     ),
 };
 
-export async function awardXp(
-  input: {
-    userId: string;
-    workspaceId: string | null;
-    actionType: XpActionType;
-    referenceId: string;
-  },
-  database: GamificationDatabase = prismaGamificationDatabase,
-): Promise<
+export interface AwardXpInput {
+  userId: string;
+  workspaceId: string | null;
+  actionType: XpActionType;
+  referenceId: string;
+}
+
+export type AwardXpResult =
   | { status: 'awarded'; xpDelta: number; totalXp: number; tier: BuilderTier }
-  | { status: 'duplicate' | 'disabled'; totalXp: number; tier: BuilderTier }
-> {
+  | { status: 'duplicate' | 'disabled'; totalXp: number; tier: BuilderTier };
+
+export async function awardXpInTransaction(
+  input: AwardXpInput,
+  transaction: GamificationTransaction,
+): Promise<AwardXpResult> {
   if (input.referenceId.length === 0) {
     throw new RangeError('An idempotency reference is required for XP awards.');
   }
 
-  return database.transaction(async (transaction) => {
-    const profile = await transaction.getProfile(input.userId);
-    if (profile?.gamificationEnabled === false) {
-      return {
-        status: 'disabled',
-        totalXp: profile.totalXp,
-        tier: profile.tier,
-      };
-    }
-
-    const xpDelta = XP_REWARDS[input.actionType];
-    const inserted = await transaction.insertXpLedger({
-      userId: input.userId,
-      workspaceId: input.workspaceId,
-      actionType: input.actionType,
-      xpDelta,
-      referenceId: input.referenceId,
-    });
-    if (!inserted) {
-      const currentXp = profile?.totalXp ?? 0;
-      return {
-        status: 'duplicate',
-        totalXp: currentXp,
-        tier: profile?.tier ?? calculateBuilderTier(currentXp),
-      };
-    }
-
-    const updatedProfile = await transaction.addXp(input.userId, xpDelta);
+  const profile = await transaction.getProfile(input.userId);
+  if (profile?.gamificationEnabled === false) {
     return {
-      status: 'awarded',
-      xpDelta,
-      totalXp: updatedProfile.totalXp,
-      tier: updatedProfile.tier,
+      status: 'disabled',
+      totalXp: profile.totalXp,
+      tier: profile.tier,
     };
+  }
+
+  const xpDelta = XP_REWARDS[input.actionType];
+  const inserted = await transaction.insertXpLedger({
+    userId: input.userId,
+    workspaceId: input.workspaceId,
+    actionType: input.actionType,
+    xpDelta,
+    referenceId: input.referenceId,
   });
+  if (!inserted) {
+    const currentXp = profile?.totalXp ?? 0;
+    return {
+      status: 'duplicate',
+      totalXp: currentXp,
+      tier: profile?.tier ?? calculateBuilderTier(currentXp),
+    };
+  }
+
+  const updatedProfile = await transaction.addXp(input.userId, xpDelta);
+  return {
+    status: 'awarded',
+    xpDelta,
+    totalXp: updatedProfile.totalXp,
+    tier: updatedProfile.tier,
+  };
+}
+
+export async function awardXp(
+  input: AwardXpInput,
+  database: GamificationDatabase = prismaGamificationDatabase,
+): Promise<AwardXpResult> {
+  return database.transaction((transaction) => awardXpInTransaction(input, transaction));
 }
 
 export async function awardTemplateCreatorKarma(
