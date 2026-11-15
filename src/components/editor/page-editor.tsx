@@ -6,6 +6,8 @@ import type { JsonObject } from '@/types/workspace';
 import { BlockEditor } from './block-editor';
 import { PageHeader, type EditorPageHeaderData } from './page-header';
 import type { EditorBlock } from './editor-utils';
+import { DatabaseContainer } from '@/components/database/database-container';
+import type { DatabaseData } from '@/components/database/database-types';
 
 export interface EditorPageData extends EditorPageHeaderData {
   workspaceId: string;
@@ -20,9 +22,11 @@ export interface EditorPageData extends EditorPageHeaderData {
 export function PageEditor({
   initialPage,
   initialBlocks,
+  initialDatabaseData,
 }: {
   initialPage: EditorPageData;
   initialBlocks: EditorBlock[];
+  initialDatabaseData: DatabaseData | null;
 }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
   const store = useWorkspaceStore;
@@ -83,11 +87,19 @@ export function PageEditor({
                 : 'var(--font-sans)',
         }}
       >
-        <BlockEditor
-          workspaceId={page.workspaceId}
-          pageId={page.id}
-          initialBlocks={initialBlocks}
-        />
+        {page.isDatabase && initialDatabaseData ? (
+          <DatabaseContainer
+            initialData={initialDatabaseData}
+            pageId={page.id}
+            workspaceId={page.workspaceId}
+          />
+        ) : (
+          <BlockEditor
+            workspaceId={page.workspaceId}
+            pageId={page.id}
+            initialBlocks={initialBlocks}
+          />
+        )}
       </div>
     </main>
   );

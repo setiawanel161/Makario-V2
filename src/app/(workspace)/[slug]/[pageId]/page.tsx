@@ -2,9 +2,16 @@ import { notFound, redirect } from 'next/navigation';
 import { auth } from '@/server/auth/auth';
 import { prisma } from '@/server/db/prisma';
 import { blockContentPayloadSchema } from '@/lib/editor/block-content-schema';
+import { toJsonValue } from '@/lib/editor/block-content-schema';
 import { PageEditor } from '@/components/editor/page-editor';
 import type { EditorBlock } from '@/components/editor/editor-utils';
 import type { EditorPageData } from '@/components/editor/page-editor';
+import type { DatabaseData } from '@/components/database/database-types';
+import {
+  propertyConfigSchema,
+  viewFilterRuleSchema,
+  viewSortRuleSchema,
+} from '@/server/validators/database';
 
 export default async function WorkspacePage({
   params,
@@ -93,5 +100,91 @@ export default async function WorkspacePage({
     };
   });
 
-  return <PageEditor initialPage={initialPage} initialBlocks={initialBlocks} />;
+  let initialDatabaseData: DatabaseData | null = null;
+  if (page.isDatabase) {
+    const [properties, views, rows] = await Promise.all([
+      prisma.databaseProperty.findMany({
+        where: { databasePageId: page.id },
+        orderBy: { orderIndex: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          config: true,
+          orderIndex: true,
+          revision: true,
+        },
+      }),
+      prisma.databaseView.findMany({
+        where: { databasePageId: page.id },
+        orderBy: { orderIndex: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          layout: true,
+          filters: true,
+          sorts: true,
+          visibleProperties: true,
+          groupByPropertyId: true,
+          orderIndex: true,
+          revision: true,
+        },
+      }),
+      prisma.page.findMany({
+        where: {
+          workspaceId: page.workspaceId,
+          parentPageId: page.id,
+          deletedAt: null,
+          OR: [{ isPrivate: false }, { isPrivate: true, createdById: session.user.id }],
+        },
+        orderBy: { orderIndex: 'asc' },
+        take: 5000,
+        select: {
+          id: true,
+          title: true,
+          icon: true,
+          orderIndex: true,
+          revision: true,
+          rowPropertyValues: {
+            select: { id: true, propertyId: true, value: true },
+          },
+        },
+      }),
+    ]);
+
+    initialDatabaseData = {
+      properties: properties.map((property) => ({
+        ...property,
+        config: propertyConfigSchema.parse(property.config),
+        revision: property.revision.toString(10),
+      })),
+      views: views.map((view) => ({
+        ...view,
+        filters: viewFilterRuleSchema.array().parse(view.filters),
+        sorts: viewSortRuleSchema.array().parse(view.sorts),
+        visibleProperties: Array.isArray(view.visibleProperties)
+          ? view.visibleProperties.filter((value): value is string => typeof value === 'string')
+          : [],
+        revision: view.revision.toString(10),
+      })),
+      rows: rows.map((row) => ({
+        ...row,
+        revision: row.revision.toString(10),
+        properties: Object.fromEntries(
+          row.rowPropertyValues.map((value) => [value.propertyId, toJsonValue(value.value)]),
+        ),
+        propertyValueIds: Object.fromEntries(
+          row.rowPropertyValues.map((value) => [value.propertyId, value.id]),
+        ),
+      })),
+    };
+  }
+
+  return (
+    <PageEditor
+      initialDatabaseData={initialDatabaseData}
+      initialPage={initialPage}
+      initialBlocks={initialBlocks}
+    />
+  );
 }
