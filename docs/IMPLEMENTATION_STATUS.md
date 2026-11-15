@@ -6,8 +6,8 @@
 
 ## 1. Current Status & Active Target
 
-- **Current Phase:** Foundation scaffold established; awaiting execution of local verification gates.
-- **Active Target:** **PR #2 — Core Engines (Fractional Indexing, Local-First Sync & Gamification)**
+- **Current Phase:** PR #2 Core Engines implemented and verified.
+- **Active Target:** **PR #3 — Authentication, Workspace RBAC & Recursive Page Sidebar**
 - **Tech Stack:** Next.js 15 (App Router), TypeScript (Strict), Tailwind CSS, PostgreSQL 16, Prisma ORM, Zustand + Dexie.js (IndexedDB), Auth.js v5 (future phase), Vitest.
 
 ---
@@ -25,19 +25,21 @@
 
 ## 3. Multi-PR Implementation Roadmap
 
-### PR #1: Foundation & Database Scaffolding (implemented; verification pending)
+### PR #1: Foundation & Database Scaffolding (implemented and verified)
 - [x] Next.js 15 App Router scaffold with TypeScript strict mode, Tailwind, ESLint, `src/`, and `@/*` alias
 - [x] `src/app/globals.css` includes light/dark semantic, property-pill, tier, typography, spacing, and elevation tokens
 - [x] Existing `prisma/schema.prisma` preserved without schema changes
 - [x] `prisma/seed.ts` includes Personal, Team, and School workflow preset definitions and idempotent initial achievement badges
 - [x] Vitest setup and sanity test
-- [ ] Run Prisma validation/generation, TypeScript, tests, lint, and production build in the VM
+- [x] Prisma validation/generation, TypeScript, tests, lint, and production build passed in the VM
 
-### PR #2: Core Engines
-- [ ] Implement `src/lib/fractional-index.ts` (lexicographical midpoint key generator + sibling normalizer when key length > 32)
-- [ ] Implement `src/lib/sync/` (Dexie IndexedDB schema, optimistic mutation outbox queue, field-level LWW reconciler)
-- [ ] Implement `src/server/services/gamify-engine.ts` (idempotent XP awards, tier evolution, streak/freeze logic)
-- [ ] Write and pass unit tests for fractional indexing, sync queue, and gamification rules
+### PR #2: Core Engines (implemented and verified)
+- [x] Add strict workspace payload and DTO contracts with decimal-string revision serialization
+- [x] Implement base-62 fractional indexing and sibling normalization when generated keys exceed 32 characters
+- [x] Implement Dexie IndexedDB stores, idempotent outbox, 300ms batched sync, online retry, and field-level LWW
+- [x] Implement synchronous optimistic Zustand updates and Prisma-backed idempotent XP, tier, streak/freeze, and creator-karma services
+- [x] Add Vitest suites for fractional indexing, local-first sync, and gamification (20 tests passing)
+- [x] Run Prisma validation/generation, TypeScript, ESLint, Vitest, and production build
 
 ### PR #3: Authentication, Workspace RBAC & Recursive Page Sidebar
 - [ ] Configure Auth.js v5, session callbacks, and tenant-isolation permission guards
@@ -88,7 +90,8 @@
 3. **Styling Rule:** Components must consume semantic CSS variables from `src/app/globals.css`, not hardcoded color values.
 4. **Idempotency:** Sync mutations and `XpLedger` entries require unique idempotency keys to prevent duplicate records on offline retry.
 5. **Preset storage:** The existing schema has no `WorkspacePreset` model. Presets are exported as typed seed catalog data for future workspace provisioning; they are not persisted as database rows.
-6. **Verification:** This GitHub editing environment does not provide a VM terminal, so no local command result is asserted. Run the exact commands from the PR handoff before merging.
+6. **Verification:** PR #1 gates passed on 2026-11-15. The VM had no `.env`, so Prisma validation and generation used the documented local PostgreSQL URL as a command-scoped `DATABASE_URL`; no environment file was created.
+7. **Weekly streak freeze:** Freeze usage is recorded as a zero-XP `XpLedger` entry keyed by user and UTC week, providing one use per week without changing the existing Prisma schema.
 
 ---
 
@@ -97,4 +100,5 @@
 | PR # | Date | Branch / Scope | Key Files Created or Modified | Verification Status |
 | :--- | :--- | :--- | :--- | :--- |
 | `PR #0` | `2026-11-15` | `main` (Specs & Rules) | `AGENTS.md`, `.env.example`, `docs/replica-*.md`, `docs/IMPLEMENTATION_STATUS.md` | `Docs Verified` |
-| `PR #1` | `2026-11-15` | `copilot/pr-1-foundation` (Foundation Scaffold) | `package.json`, Next.js/Tailwind/ESLint/Vitest config, `src/app/`, `src/server/db/prisma.ts`, `prisma/seed.ts`, `tests/sanity.test.ts`, this status file | `Not run: VM terminal unavailable` |
+| `PR #1` | `2026-11-15` | `copilot/pr-1-foundation` (Foundation Scaffold) | Next.js/Tailwind/ESLint/Vitest scaffold, `package.json`/`package-lock.json`, `src/app/`, `src/server/db/prisma.ts`, `prisma/seed.ts`, `tests/sanity.test.ts`, this status file | `Passed: Prisma validate/generate, TypeScript, Vitest, ESLint, production build` |
+| `PR #2` | `2026-11-15` | `copilot/pr-2-core-engines` (Core Engines) | `src/types/workspace.ts`, `src/lib/fractional-index.ts`, `src/lib/sync/`, `src/server/services/gamify-engine.ts`, three engine test suites, dependency lockfiles, this status file | `Passed: Prisma validate/generate, TypeScript, 20 Vitest tests, ESLint, production build` |
