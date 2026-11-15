@@ -1,0 +1,358 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. AUTHENTICATION & MULTI-TENANT WORKSPACE
+// ==========================================
+
+enum PlanTier {
+  FREE
+  PRO
+  TEAM
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String?
+  avatarUrl     String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  memberships    WorkspaceMember[]
+  createdPages   Page[]            @relation("PageCreator")
+  comments       Comment[]
+  builderProfile BuilderProfile?
+  xpLedger       XpLedger[]
+  userBadges     UserBadge[]
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Workspace {
+  id                 String   @id @default(uuid())
+  name               String
+  slug               String   @unique
+  icon               String?
+  planTier           PlanTier @default(FREE)
+  billingCustomerId  String?  @unique
+  subscriptionStatus String?  @default("active")
+  serverRevision     BigInt   @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  members  WorkspaceMember[]
+  pages    Page[]
+  xpEvents XpLedger[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+// ==========================================
+// 2. PAGES & HIERARCHICAL BLOCK-TREE ENGINE
+// ==========================================
+
+enum BlockType {
+  PARAGRAPH
+  HEADING_1
+  HEADING_2
+  HEADING_3
+  TODO
+  BULLETED_LIST
+  NUMBERED_LIST
+  TOGGLE
+  CALLOUT
+  CODE
+  QUOTE
+  DIVIDER
+  IMAGE
+  COLUMN_LIST
+  COLUMN
+  CHILD_DATABASE
+  CHART_BLOCK
+  SYNCED_BLOCK
+}
+
+model Page {
+  id                 String    @id @default(uuid())
+  workspaceId        String
+  parentPageId       String?
+  createdById        String
+  title              String    @default("Untitled")
+  icon               String?
+  coverUrl           String?
+  fontFamily         String    @default("sans") // "sans" | "serif" | "mono"
+  isFullWidth        Boolean   @default(false)
+  orderIndex         String    @default("a0")
+  isDatabase         Boolean   @default(false)
+  isFavorite         Boolean   @default(false)
+  isPrivate          Boolean   @default(false)
+  isPublished        Boolean   @default(false)
+  publicSlug         String?   @unique
+  allowTemplateClone Boolean   @default(false)
+  cloneCount         Int       @default(0)
+  revision           BigInt    @default(1)
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parentPage Page?     @relation("PageHierarchy", fields: [parentPageId], references: [id], onDelete: SetNull)
+  childPages Page[]    @relation("PageHierarchy")
+  createdBy  User      @relation("PageCreator", fields: [createdById], references: [id])
+
+  blocks             Block[]
+  databaseProperties DatabaseProperty[]    @relation("DatabaseSchema")
+  databaseViews      DatabaseView[]        @relation("DatabaseViews")
+  rowPropertyValues  DatabaseRowProperty[] @relation("RowValues")
+  comments           Comment[]
+
+  @@index([workspaceId, parentPageId, deletedAt])
+  @@index([workspaceId, isFavorite, deletedAt])
+  @@index([publicSlug])
+}
+
+model Block {
+  id             String    @id @default(uuid())
+  pageId         String
+  parentBlockId  String?
+  syncedSourceId String?
+  type           BlockType @default(PARAGRAPH)
+  content        Json      @default("{}")
+  orderIndex     String    @default("a0")
+  revision       BigInt    @default(1)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  page          Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  parentBlock   Block?    @relation("BlockHierarchy", fields: [parentBlockId], references: [id], onDelete: Cascade)
+  childBlocks   Block[]   @relation("BlockHierarchy")
+  syncedSource  Block?    @relation("SyncedBlockRef", fields: [syncedSourceId], references: [id], onDelete: SetNull)
+  syncedMirrors Block[]   @relation("SyncedBlockRef")
+  comments      Comment[]
+
+  @@index([pageId, parentBlockId, orderIndex])
+  @@index([deletedAt])
+}
+
+// ==========================================
+// 3. RELATIONAL DATABASE & MULTI-VIEW ENGINE
+// ==========================================
+
+enum PropertyType {
+  TEXT
+  NUMBER
+  SELECT
+  MULTI_SELECT
+  STATUS
+  DATE
+  PERSON
+  CHECKBOX
+  URL
+  RELATION
+  ROLLUP
+  FORMULA
+}
+
+enum ViewLayout {
+  TABLE
+  BOARD
+  CALENDAR
+  TIMELINE
+  GALLERY
+}
+
+model DatabaseProperty {
+  id             String       @id @default(uuid())
+  databasePageId String
+  name           String
+  type           PropertyType @default(TEXT)
+  config         Json         @default("{}")
+  orderIndex     String       @default("a0")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  databasePage Page                  @relation("DatabaseSchema", fields: [databasePageId], references: [id], onDelete: Cascade)
+  rowValues    DatabaseRowProperty[]
+  groupedViews DatabaseView[]        @relation("ViewGroupBy")
+
+  @@index([databasePageId, orderIndex])
+}
+
+model DatabaseRowProperty {
+  id         String   @id @default(uuid())
+  rowPageId  String
+  propertyId String
+  value      Json
+  updatedAt  DateTime @updatedAt
+
+  rowPage  Page             @relation("RowValues", fields: [rowPageId], references: [id], onDelete: Cascade)
+  property DatabaseProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([rowPageId, propertyId])
+  @@index([propertyId])
+}
+
+model DatabaseView {
+  id                String     @id @default(uuid())
+  databasePageId    String
+  name              String     @default("Default View")
+  layout            ViewLayout @default(TABLE)
+  filters           Json       @default("[]")
+  sorts             Json       @default("[]")
+  visibleProperties Json       @default("[]")
+  groupByPropertyId String?
+  orderIndex        String     @default("a0")
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  databasePage    Page              @relation("DatabaseViews", fields: [databasePageId], references: [id], onDelete: Cascade)
+  groupByProperty DatabaseProperty? @relation("ViewGroupBy", fields: [groupByPropertyId], references: [id], onDelete: SetNull)
+
+  @@index([databasePageId, orderIndex])
+}
+
+model Comment {
+  id         String    @id @default(uuid())
+  pageId     String
+  blockId    String?
+  authorId   String
+  threadId   String
+  content    String    @db.Text
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  block  Block? @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([pageId, threadId])
+}
+
+// ==========================================
+// 4. GAMIFICATION & RETENTION ENGINE (/replica-gamify)
+// ==========================================
+
+enum BuilderTier {
+  APPRENTICE_SCRIBE  // Tier 1: 0 - 499 XP
+  SYSTEMS_ARCHITECT  // Tier 2: 500 - 2,499 XP
+  GRANDMASTER_WEAVER // Tier 3: 2,500+ XP
+}
+
+model BuilderProfile {
+  id                  String      @id @default(uuid())
+  userId              String      @unique
+  totalXp             Int         @default(0)
+  tier                BuilderTier @default(APPRENTICE_SCRIBE)
+  karmaScore          Int         @default(0)
+  currentStreak       Int         @default(0)
+  longestStreak       Int         @default(0)
+  freezeTokens        Int         @default(1)
+  lastActiveDate      DateTime?
+  gamificationEnabled Boolean     @default(true)
+  updatedAt           DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model XpLedger {
+  id          String   @id @default(uuid())
+  userId      String
+  workspaceId String?
+  actionType  String
+  xpDelta     Int
+  referenceId String?
+  createdAt   DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, actionType, referenceId])
+  @@index([userId, createdAt])
+}
+
+model AchievementBadge {
+  id           String      @id @default(uuid())
+  slug         String      @unique
+  name         String
+  description  String
+  icon         String
+  requiredTier BuilderTier @default(APPRENTICE_SCRIBE)
+
+  awardedTo UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(uuid())
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge AchievementBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+}
