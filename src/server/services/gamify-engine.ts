@@ -309,10 +309,17 @@ export async function awardTemplateCreatorKarma(
   creatorUserId: string,
   database: GamificationDatabase = prismaGamificationDatabase,
 ): Promise<{ karmaScore: number }> {
-  return database.transaction(async (transaction) => {
-    const profile = await transaction.incrementKarma(creatorUserId, 25);
-    return { karmaScore: profile.karmaScore };
-  });
+  return database.transaction((transaction) =>
+    awardTemplateCreatorKarmaInTransaction(creatorUserId, transaction),
+  );
+}
+
+export async function awardTemplateCreatorKarmaInTransaction(
+  creatorUserId: string,
+  transaction: GamificationTransaction,
+): Promise<{ karmaScore: number }> {
+  const profile = await transaction.incrementKarma(creatorUserId, 25);
+  return { karmaScore: profile.karmaScore };
 }
 
 export async function recordDailyActivity(

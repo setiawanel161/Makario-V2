@@ -1,6 +1,7 @@
 import { getAuthenticatedUserId, authorizationErrorResponse } from '@/server/auth/route-utils';
 import { requireWorkspaceRole } from '@/server/auth/rbac';
 import { prisma } from '@/server/db/prisma';
+import { propertyConfigSchema, viewFilterRuleSchema, viewSortRuleSchema } from '@/server/validators/database';
 
 export async function GET(
   _request: Request,
@@ -158,11 +159,14 @@ export async function GET(
       ? {
           properties: properties.map((property) => ({
             ...property,
+            config: propertyConfigSchema.parse(property.config),
             revision: property.revision.toString(10),
             updatedAt: property.updatedAt.toISOString(),
           })),
           views: views.map((view) => ({
             ...view,
+            filters: viewFilterRuleSchema.array().parse(view.filters),
+            sorts: viewSortRuleSchema.array().parse(view.sorts),
             revision: view.revision.toString(10),
             updatedAt: view.updatedAt.toISOString(),
           })),

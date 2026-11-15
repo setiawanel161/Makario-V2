@@ -111,3 +111,16 @@ export function toJsonObject(value: unknown): JsonObject {
   }
   return parsed.data;
 }
+
+export function toJsonValue(value: unknown): JsonValue {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) {
+    throw new TypeError('Value must be serializable JSON.');
+  }
+  const decoded: unknown = JSON.parse(serialized);
+  const parsed = jsonValueSchema.safeParse(decoded);
+  if (!parsed.success) {
+    throw new TypeError('Value must be valid JSON.');
+  }
+  return parsed.data;
+}

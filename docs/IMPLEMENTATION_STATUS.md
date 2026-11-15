@@ -57,9 +57,12 @@
 - [x] Pass Prisma validation/generation, strict TypeScript, ESLint, all 36 Vitest tests, and production build
 
 ### PR #5: Multi-View Relational Database, Template Cloner & Fidelity Audit
-- [ ] Implement database property schema editor and Table/Kanban/Calendar views
-- [ ] Implement recursive template cloner
-- [ ] Execute fidelity audit and generate `docs/audit-diff.md`
+- [x] Implement property/view CRUD for all property types; connect editable Table, Kanban, and Calendar views to optimistic page/row-property sync
+- [x] Implement four-pass transactional template cloning with UUID remapping, external relation degradation, clone count, and creator karma
+- [x] Add public page API/view, SEO page, template duplication CTA, and signature-verified Stripe/Midtrans billing webhook
+- [x] Add multi-stage Docker image and Postgres 16 Compose deployment with health check and migration deployment
+- [x] Add database-view, template-cloner, public-isolation, and billing webhook tests; execute the PM/design fidelity audit in `docs/audit-diff.md`
+- [x] Pass Prisma validation/generation, strict TypeScript, ESLint, all 44 Vitest tests, production build, Docker Compose validation, and app/migration image builds
 
 ---
 
@@ -82,15 +85,17 @@
 | `POST /api/workspaces/[id]/pages` | Create a root or child page in the active workspace | `Implemented (PR #3)` |
 | `GET /api/health` | Check application handler and PostgreSQL connectivity | `Implemented (PR #3)` |
 | `GET /api/pages/[pageId]` | Full page blocks + database schema/views/rows | `Implemented (PR #4)` |
+| `POST/PATCH/DELETE /api/pages/[pageId]/properties` | Manage typed database properties and their configuration | `Implemented (PR #5)` |
+| `POST/PATCH/DELETE /api/pages/[pageId]/views` | Manage persisted database layouts, filters, sorts, and grouping | `Implemented (PR #5)` |
+| `POST /api/pages/[pageId]/duplicate` | Recursive template cloner + Karma award | `Implemented (PR #5)` |
+| `GET /api/public/[slug]` | Unauthenticated published read-only page | `Implemented (PR #5)` |
+| `POST /api/webhooks/billing` | Signature-verified Stripe/Midtrans plan synchronization | `Implemented (PR #5)` |
 | `POST /api/sync/push` & `GET /api/sync/pull` | Batched optimistic delta sync & LWW reconciliation | `Implemented (PR #4)` |
 | `GET /api/sync/stream` | Server-Sent Events live workspace updates | `Implemented (PR #4; one-second revision poll)` |
 | `GET /api/workspaces/[id]/search` | Full-text search for quick search modal | `Implemented (PR #4)` |
 | `POST /api/pages/[pageId]/publish` | Owner/creator-gated public page publishing | `Implemented (PR #4)` |
 | `/p/[publicSlug]` | Published, read-only page view with private/deleted content excluded | `Implemented (PR #4)` |
-| `POST /api/pages/[pageId]/duplicate` | Recursive template cloner + Karma award | `Pending (PR #5)` |
-| `GET /api/public/[slug]` | Unauthenticated published read-only page | `Pending (PR #5)` |
 | `GET/PATCH /api/gamification/profile` | Builder XP, tier, streak, and preference API | `Implemented (PR #3)` |
-| `POST /api/webhooks/billing` | Stripe/Midtrans subscription synchronization | `Pending (PR #5)` |
 
 ---
 
@@ -116,3 +121,4 @@
 | `PR #2` | `2026-11-15` | `copilot/pr-2-core-engines` (Core Engines) | `src/types/workspace.ts`, `src/lib/fractional-index.ts`, `src/lib/sync/`, `src/server/services/gamify-engine.ts`, three engine test suites, dependency lockfiles, this status file | `Passed: Prisma validate/generate, TypeScript, 20 Vitest tests, ESLint, production build` |
 | `PR #3` | `2026-11-15` | `copilot/pr-3-auth-workspace-shell` (Auth, RBAC & Workspace Shell; based on PR #2) | `src/server/auth/`, workspace provisioning service and preset catalog, health/workspace/page/gamification APIs, login/onboarding/workspace UI, RBAC and provisioning tests, this status file | `Passed: Prisma validate/generate, TypeScript, 25 Vitest tests, ESLint, production build` |
 | `PR #4` | `2026-11-15` | `copilot/pr-4-editor-sync` (Block Editor & Delta Sync; based on PR #3, targets main) | Full initial schema baseline migration; page/push/pull/SSE/search/publish routes; block editor, slash menu, search modal, XP toast, delta client; sync and editor tests; this status file | `Passed: Prisma reset/deploy/validate/generate, TypeScript, 36 Vitest tests, ESLint, production build` |
+| `PR #5` | `2026-11-15` | `copilot/pr-5-database-template` (Database Views, Template Cloner, Public Web & Deployment; targets main) | Typed property/view APIs and client; database Table/Board/Calendar; transactional template cloner; public API/page and duplicate CTA; Stripe/Midtrans webhook; Docker/Compose; fidelity audit and tests | `Passed: Prisma validate/generate, TypeScript, 44 Vitest tests, ESLint, production build, Docker Compose config and images` |
