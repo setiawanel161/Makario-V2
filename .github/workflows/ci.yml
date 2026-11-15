@@ -1,0 +1,130 @@
+name: Makario-V2 CI Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, Lint, DB, Test & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: workspace_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: 1
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/workspace_db?schema=public
+      AUTH_SECRET: ci-verification-secret-key-placeholder
+      AUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect project stack & config files
+        id: detect
+        run: |
+          [ -f "package.json" ] && echo "has_pkg=true" >> $GITHUB_OUTPUT || echo "has_pkg=false" >> $GITHUB_OUTPUT
+          [ -f "package-lock.json" ] && echo "has_lock=true" >> $GITHUB_OUTPUT || echo "has_lock=false" >> $GITHUB_OUTPUT
+          [ -f "prisma/schema.prisma" ] && echo "has_prisma=true" >> $GITHUB_OUTPUT || echo "has_prisma=false" >> $GITHUB_OUTPUT
+          [ -d "prisma/migrations" ] && echo "has_migrations=true" >> $GITHUB_OUTPUT || echo "has_migrations=false" >> $GITHUB_OUTPUT
+          [ -f "prisma/seed.ts" ] && echo "has_seed=true" >> $GITHUB_OUTPUT || echo "has_seed=false" >> $GITHUB_OUTPUT
+          if ls .eslintrc* eslint.config.* 1> /dev/null 2>&1; then
+            echo "has_eslint=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_eslint=false" >> $GITHUB_OUTPUT
+          fi
+          if ls playwright.config.* 1> /dev/null 2>&1; then
+            echo "has_playwright=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_playwright=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js 20
+        if: steps.detect.outputs.has_pkg == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache npm dependencies
+        if: steps.detect.outputs.has_pkg == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        if: steps.detect.outputs.has_pkg == 'true'
+        run: |
+          if [ "${{ steps.detect.outputs.has_lock }}" == "true" ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Prisma Validate, Generate & Schema Sync
+        if: steps.detect.outputs.has_pkg == 'true' && steps.detect.outputs.has_prisma == 'true'
+        run: |
+          npx prisma validate
+          npx prisma generate
+          if [ "${{ steps.detect.outputs.has_migrations }}" == "true" ]; then
+            npx prisma migrate deploy
+          else
+            npx prisma db push --accept-data-loss
+          fi
+
+      - name: Verify Prisma Seed Script
+        if: steps.detect.outputs.has_pkg == 'true' && steps.detect.outputs.has_prisma == 'true' && steps.detect.outputs.has_seed == 'true'
+        run: |
+          if grep -q '"seed"' package.json; then
+            npx prisma db seed
+          fi
+
+      - name: TypeScript Strict Type-Check
+        if: steps.detect.outputs.has_pkg == 'true'
+        run: npx tsc --noEmit
+
+      - name: Run ESLint
+        if: steps.detect.outputs.has_pkg == 'true' && steps.detect.outputs.has_eslint == 'true'
+        run: npm run lint --if-present
+
+      - name: Run Unit & Integration Tests
+        if: steps.detect.outputs.has_pkg == 'true'
+        run: npm test --if-present
+
+      - name: Verify Next.js Production Build
+        if: steps.detect.outputs.has_pkg == 'true'
+        run: npm run build
+
+      - name: Run Playwright E2E Tests (Auto-enabled when configured)
+        if: steps.detect.outputs.has_pkg == 'true' && steps.detect.outputs.has_playwright == 'true'
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
