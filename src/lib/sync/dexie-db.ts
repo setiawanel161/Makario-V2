@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import type { SyncMutationType } from '@/types/sync';
 import type { JsonValue } from '@/types/workspace';
 
 export type SyncEntityType = 'page' | 'block' | 'property' | 'rowProperty' | 'view';
@@ -12,12 +13,19 @@ export interface LocalEntityRecord {
 
 export interface OutboxMutation {
   seq?: number;
+  type: SyncMutationType;
   idempotencyKey: string;
   workspaceId: string;
   entityType: SyncEntityType;
   entityId: string;
   changes: Record<string, JsonValue>;
   createdAt: string;
+  fieldTimestamps?: Record<string, string>;
+}
+
+export interface SyncMetadata {
+  workspaceId: string;
+  serverRevision: string;
 }
 
 export class WorkspaceDatabase extends Dexie {
@@ -27,6 +35,7 @@ export class WorkspaceDatabase extends Dexie {
   rowProperties!: Table<LocalEntityRecord, string>;
   views!: Table<LocalEntityRecord, string>;
   outbox!: Table<OutboxMutation, number>;
+  syncMetadata!: Table<SyncMetadata, string>;
 
   constructor(name = 'makario-workspace') {
     super(name);
@@ -38,6 +47,15 @@ export class WorkspaceDatabase extends Dexie {
       rowProperties: '&id, rowPageId, propertyId, &[rowPageId+propertyId]',
       views: '&id, databasePageId, orderIndex',
       outbox: '++seq, &idempotencyKey, workspaceId, entityType, entityId, createdAt',
+    });
+    this.version(2).stores({
+      pages: '&id, workspaceId, parentPageId, isDatabase, updatedAt',
+      blocks: '&id, pageId, parentBlockId, orderIndex',
+      properties: '&id, databasePageId, orderIndex',
+      rowProperties: '&id, rowPageId, propertyId, &[rowPageId+propertyId]',
+      views: '&id, databasePageId, orderIndex',
+      outbox: '++seq, &idempotencyKey, workspaceId, entityType, entityId, createdAt',
+      syncMetadata: '&workspaceId',
     });
   }
 

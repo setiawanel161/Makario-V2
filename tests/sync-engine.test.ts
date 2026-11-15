@@ -24,6 +24,13 @@ function makeMutation(id: number): OutboxMutation {
   });
 }
 
+function acknowledge(batch: readonly OutboxMutation[]) {
+  return {
+    acknowledged: batch.map((mutation) => mutation.idempotencyKey),
+    awardedXp: [],
+  };
+}
+
 beforeEach(() => {
   databaseSequence += 1;
   db = new WorkspaceDatabase(`sync-engine-test-${databaseSequence}`);
@@ -39,7 +46,7 @@ describe('local-first sync engine', () => {
   it('persists entity updates and deduplicates outbox entries by idempotency key', async () => {
     engine = new SyncEngine({
       db,
-      transport: async () => [],
+      transport: async () => ({ acknowledged: [], awardedXp: [] }),
       isOnline: () => false,
     });
     const mutation = makeMutation(1);
@@ -60,7 +67,7 @@ describe('local-first sync engine', () => {
 
   it('flushes acknowledged mutations in batches of no more than 50', async () => {
     const transport = vi.fn(async (batch: readonly OutboxMutation[]) =>
-      batch.map((mutation) => mutation.idempotencyKey),
+      acknowledge(batch),
     );
     engine = new SyncEngine({ db, transport, isOnline: () => true });
 
@@ -77,7 +84,10 @@ describe('local-first sync engine', () => {
   it('retains unacknowledged packets for an idempotent retry', async () => {
     engine = new SyncEngine({
       db,
-      transport: async (batch) => [batch[0].idempotencyKey],
+      transport: async (batch) => ({
+        acknowledged: [batch[0].idempotencyKey],
+        awardedXp: [],
+      }),
       isOnline: () => true,
     });
     await engine.enqueueMutation(makeMutation(1));
@@ -87,9 +97,53 @@ describe('local-first sync engine', () => {
     expect(await db.outbox.count()).toBe(1);
   });
 
+  it('notifies the UI once when the server confirms newly awarded XP', async () => {
+    const onXpAwarded = vi.fn();
+    engine = new SyncEngine({
+      db,
+      transport: async (batch) => ({
+        acknowledged: batch.map((mutation) => mutation.idempotencyKey),
+        awardedXp: [{ actionType: 'COMPLETE_TODO', xpDelta: 10, referenceId: 'block-1' }],
+      }),
+      onXpAwarded,
+      isOnline: () => true,
+    });
+    await engine.enqueueMutation(makeMutation(1));
+
+    await engine.flushPending();
+
+    expect(onXpAwarded).toHaveBeenCalledTimes(1);
+    expect(onXpAwarded).toHaveBeenCalledWith([
+      { actionType: 'COMPLETE_TODO', xpDelta: 10, referenceId: 'block-1' },
+    ]);
+  });
+
+  it('retries failed network batches with a bounded delay', async () => {
+    let attempts = 0;
+    engine = new SyncEngine({
+      db,
+      transport: async (batch) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Temporary service failure.');
+        return acknowledge(batch);
+      },
+      debounceMs: 60_000,
+      isOnline: () => true,
+    });
+    await engine.enqueueMutation(makeMutation(1));
+
+    await expect(engine.flushPending()).rejects.toThrow('Temporary service failure.');
+    await vi.waitFor(
+      async () => expect(await db.outbox.count()).toBe(0),
+      { timeout: 2500, interval: 20 },
+    );
+
+    expect(attempts).toBe(2);
+  });
+
   it('waits for the debounce interval before flushing queued mutations', async () => {
     const transport = vi.fn(async (batch: readonly OutboxMutation[]) =>
-      batch.map((mutation) => mutation.idempotencyKey),
+      acknowledge(batch),
     );
     engine = new SyncEngine({
       db,
@@ -109,7 +163,7 @@ describe('local-first sync engine', () => {
   it('flushes queued changes when the browser returns online', async () => {
     let online = false;
     const transport = vi.fn(async (batch: readonly OutboxMutation[]) =>
-      batch.map((mutation) => mutation.idempotencyKey),
+      acknowledge(batch),
     );
     engine = new SyncEngine({
       db,
@@ -153,7 +207,7 @@ describe('local-first sync engine', () => {
   it('updates the Zustand state synchronously before the IndexedDB write resolves', async () => {
     engine = new SyncEngine({
       db,
-      transport: async () => [],
+      transport: async () => ({ acknowledged: [], awardedXp: [] }),
       isOnline: () => false,
     });
     const store = createWorkspaceStore({

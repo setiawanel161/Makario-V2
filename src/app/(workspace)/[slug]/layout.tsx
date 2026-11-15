@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth/auth';
 import { prisma } from '@/server/db/prisma';
 import { WorkspaceSidebar } from '@/components/workspaces/workspace-sidebar';
+import { WorkspaceSyncClient } from '@/components/sync/workspace-sync-client';
+import { QuickSearchModal } from '@/components/search/quick-search-modal';
+import { XpToastNotification } from '@/components/gamification/XpToastNotification';
 
 export default async function WorkspaceLayout({
   children,
@@ -56,7 +59,12 @@ export default async function WorkspaceLayout({
         workspaces={memberships.map(({ workspace }) => workspace)}
         builderStatus={profile}
       />
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1">
+        {children}
+        <WorkspaceSyncClient workspaceId={membership.workspace.id} />
+        <QuickSearchModal workspaceId={membership.workspace.id} workspaceSlug={slug} />
+        <XpToastNotification enabled={profile.gamificationEnabled} />
+      </div>
     </div>
   );
 }

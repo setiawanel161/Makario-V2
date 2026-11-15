@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { generateKeyBetween } from '@/lib/fractional-index';
 import { getAuthenticatedUserId, authorizationErrorResponse } from '@/server/auth/route-utils';
@@ -55,38 +56,75 @@ export async function POST(
     }
   }
 
-  const page = await prisma.$transaction(async (transaction) => {
-    const sibling = await transaction.page.findFirst({
-      where: { workspaceId, parentPageId, deletedAt: null },
-      orderBy: { orderIndex: 'desc' },
-      select: { orderIndex: true },
-    });
-    const orderIndex = generateKeyBetween(sibling?.orderIndex ?? null, null);
-    return transaction.page.create({
-      data: {
-        workspaceId,
-        createdById: userId,
-        parentPageId,
-        title: parsed.data.title,
-        orderIndex,
+  try {
+    const page = await prisma.$transaction(
+      async (transaction) => {
+        const [workspace, sibling] = await Promise.all([
+          transaction.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { serverRevision: true },
+          }),
+          transaction.page.findFirst({
+            where: { workspaceId, parentPageId, deletedAt: null },
+            orderBy: { orderIndex: 'desc' },
+            select: { orderIndex: true },
+          }),
+        ]);
+        if (workspace === null) return null;
+        const orderIndex = generateKeyBetween(sibling?.orderIndex ?? null, null);
+        const revision = workspace.serverRevision + BigInt(1);
+        const now = new Date().toISOString();
+        const createdPage = await transaction.page.create({
+          data: {
+            workspaceId,
+            createdById: userId,
+            parentPageId,
+            title: parsed.data.title,
+            orderIndex,
+            revision,
+            fieldTimestamps: {
+              title: now,
+              parentPageId: now,
+              orderIndex: now,
+            },
+          },
+          select: {
+            id: true,
+            workspaceId: true,
+            parentPageId: true,
+            title: true,
+            orderIndex: true,
+            isDatabase: true,
+            isFavorite: true,
+            isPrivate: true,
+            revision: true,
+            updatedAt: true,
+          },
+        });
+        await transaction.workspace.update({
+          where: { id: workspaceId },
+          data: { serverRevision: revision },
+        });
+        return createdPage;
       },
-      select: {
-        id: true,
-        workspaceId: true,
-        parentPageId: true,
-        title: true,
-        orderIndex: true,
-        isDatabase: true,
-        isFavorite: true,
-        isPrivate: true,
-        revision: true,
-        updatedAt: true,
-      },
-    });
-  });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+    if (page === null) {
+      return Response.json({ error: 'Workspace was not found.' }, { status: 404 });
+    }
 
-  return Response.json(
-    { page: { ...page, revision: page.revision.toString(10), updatedAt: page.updatedAt.toISOString() } },
-    { status: 201 },
-  );
+    return Response.json(
+      {
+        page: {
+          ...page,
+          revision: page.revision.toString(10),
+          updatedAt: page.updatedAt.toISOString(),
+        },
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    console.error('Workspace page could not be created.', error);
+    return Response.json({ error: 'Workspace page could not be created.' }, { status: 500 });
+  }
 }

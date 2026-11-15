@@ -47,6 +47,7 @@ Sequential integer ordering (`1, 2, 3`) causes $O(N)$ row rewrites on every drag
    - `rowProperties`: `&id, rowPageId, propertyId, [rowPageId+propertyId]`
    - `views`: `&id, databasePageId, orderIndex`
    - `outbox`: `++seq, &idempotencyKey, workspaceId, entityType, entityId, createdAt`
+   - `syncMetadata`: `&workspaceId`, retaining the last pulled server revision per workspace
 2. **Optimistic Write Path (`<16ms`):**
    - UI action generates a deterministic UUIDv4 (`entityId`) and unique `idempotencyKey`.
    - Zustand store and Dexie tables update synchronously; mutation packet is appended to `outbox`.
@@ -55,7 +56,9 @@ Sequential integer ordering (`1, 2, 3`) causes $O(N)$ row rewrites on every drag
    - On network offline (`navigator.onLine === false`), mutations remain safely in `outbox` and flush automatically upon `window.addEventListener('online')`.
 4. **Conflict Resolution & `BigInt` Serialization:**
    - Server increments `Workspace.serverRevision` (`BigInt`) and entity `revision` (`BigInt`) on every accepted mutation using field-level **Last-Write-Wins (LWW)**.
+   - Each syncable entity stores its global workspace revision and per-field LWW timestamps. `SyncMutationReceipt` retains idempotency keys so retries do not repeat writes, revisions, or XP awards.
    - **Critical Serialization Rule:** Convert all `BigInt` revision fields to decimal `string` (e.g., `revision.toString()`) in JSON API responses and client stores to prevent `JSON.stringify` `TypeError`.
+   - Workspace clients listen to the revision SSE and pull deltas from the persisted `syncMetadata` cursor; the server currently polls workspace revisions once per second.
 
 ### 2.4 Recursive Template Deep-Cloner (`src/server/services/template-cloner.ts`)
 When an authenticated user triggers `POST /api/pages/[pageId]/duplicate` on a public template (`isPublished = true && allowTemplateClone = true`) or internal page:
