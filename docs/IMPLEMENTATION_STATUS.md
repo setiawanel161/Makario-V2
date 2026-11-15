@@ -72,7 +72,7 @@
 | **Pages & Block-Tree** | `Page`, `Block`, `Comment` | `Defined (PR #1)` |
 | **Relational Database** | `DatabaseProperty`, `DatabaseRowProperty`, `DatabaseView` | `Defined (PR #1)` |
 | **Gamification Engine** | `BuilderProfile`, `XpLedger`, `AchievementBadge`, `UserBadge` | `Defined (PR #1)` |
-| **Sync Infrastructure** | `SyncMutationReceipt` and per-entity revisions/field clocks | `Implemented (PR #4; additive migration)` |
+| **Sync Infrastructure** | `SyncMutationReceipt` and per-entity revisions/field clocks | `Implemented (PR #4; full initial baseline migration)` |
 
 ### API Route Handlers (`src/app/api/`)
 | Endpoint | Purpose | Status |
@@ -103,7 +103,7 @@
 5. **Preset storage:** The schema has no `WorkspacePreset` model. Presets remain a typed catalog and are injected into newly provisioned workspaces; no preset rows are persisted.
 6. **Verification:** PR #1 gates passed on 2026-11-15. The VM had no `.env`, so Prisma validation and generation used the documented local PostgreSQL URL as a command-scoped `DATABASE_URL`; no environment file was created.
 7. **Weekly streak freeze:** Freeze usage is recorded as a zero-XP `XpLedger` entry keyed by user and UTC week, providing one use per week without changing the existing Prisma schema.
-8. **PR #4 database rollout:** Sync revisions, field clocks, and mutation receipts are represented by an additive Prisma migration. The migration file is included but has not been applied to the VM database.
+8. **PR #4 database rollout:** `prisma/migrations/20261115191059_init_full_schema` creates the complete schema from an empty PostgreSQL database, including sync revisions, field clocks, and mutation receipts. `migrate reset --force`, `migrate deploy`, validation, and generation passed against a fresh local `workspace_db`.
 
 ---
 
@@ -115,4 +115,4 @@
 | `PR #1` | `2026-11-15` | `copilot/pr-1-foundation` (Foundation Scaffold) | Next.js/Tailwind/ESLint/Vitest scaffold, `package.json`/`package-lock.json`, `src/app/`, `src/server/db/prisma.ts`, `prisma/seed.ts`, `tests/sanity.test.ts`, this status file | `Passed: Prisma validate/generate, TypeScript, Vitest, ESLint, production build` |
 | `PR #2` | `2026-11-15` | `copilot/pr-2-core-engines` (Core Engines) | `src/types/workspace.ts`, `src/lib/fractional-index.ts`, `src/lib/sync/`, `src/server/services/gamify-engine.ts`, three engine test suites, dependency lockfiles, this status file | `Passed: Prisma validate/generate, TypeScript, 20 Vitest tests, ESLint, production build` |
 | `PR #3` | `2026-11-15` | `copilot/pr-3-auth-workspace-shell` (Auth, RBAC & Workspace Shell; based on PR #2) | `src/server/auth/`, workspace provisioning service and preset catalog, health/workspace/page/gamification APIs, login/onboarding/workspace UI, RBAC and provisioning tests, this status file | `Passed: Prisma validate/generate, TypeScript, 25 Vitest tests, ESLint, production build` |
-| `PR #4` | `2026-11-15` | `copilot/pr-4-editor-sync` (Block Editor & Delta Sync; based on PR #3, targets main) | Additive sync revision/receipt migration; page/push/pull/SSE/search/publish routes; block editor, slash menu, search modal, XP toast, delta client; sync and editor tests; this status file | `Passed: Prisma validate/generate, TypeScript, 36 Vitest tests, ESLint, production build; migration not applied` |
+| `PR #4` | `2026-11-15` | `copilot/pr-4-editor-sync` (Block Editor & Delta Sync; based on PR #3, targets main) | Full initial schema baseline migration; page/push/pull/SSE/search/publish routes; block editor, slash menu, search modal, XP toast, delta client; sync and editor tests; this status file | `Passed: Prisma reset/deploy/validate/generate, TypeScript, 36 Vitest tests, ESLint, production build` |
