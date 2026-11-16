@@ -2,6 +2,7 @@ import { signIn } from '@/server/auth/auth';
 import { getConfiguredOAuthProviders, isDemoSignInEnabled } from '@/server/auth/auth';
 
 export const metadata = { title: 'Sign in · Makario' };
+export const dynamic = 'force-dynamic';
 
 export default function LoginPage(): React.JSX.Element {
   const oauthProviders = getConfiguredOAuthProviders();

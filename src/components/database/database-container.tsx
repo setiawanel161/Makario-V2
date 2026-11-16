@@ -10,9 +10,11 @@ import { useWorkspaceStore } from '@/lib/sync/workspace-store';
 import { propertyConfigSchema, viewFilterRuleSchema, viewSortRuleSchema } from '@/server/validators/database';
 import { CalendarView } from './calendar-view';
 import type { DatabaseData, DatabasePropertyData, DatabaseRowData, DatabaseViewData } from './database-types';
+import { GalleryView } from './gallery-view';
 import { KanbanBoardView } from './kanban-board-view';
 import { PropertyModal } from './property-modal';
 import { TableView } from './table-view';
+import { TimelineView } from './timeline-view';
 
 const propertyResponseSchema = z.object({
   property: z.object({
@@ -151,8 +153,9 @@ export function DatabaseContainer({
     () => filterAndSortRows(rowViews, activeView.filters, activeView.sorts),
     [activeView.filters, activeView.sorts, rowViews],
   );
+  const rowsById = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
   const visibleRows = sortedRows.flatMap((viewRow) => {
-    const row = rows.find((candidate) => candidate.id === viewRow.id);
+    const row = rowsById.get(viewRow.id);
     return row === undefined ? [] : [row];
   });
   const filterProperty = properties.find((property) => property.id === filterPropertyId);
@@ -232,7 +235,15 @@ export function DatabaseContainer({
     }
     try {
       const name =
-        layout === 'BOARD' ? 'Board' : layout === 'CALENDAR' ? 'Calendar' : 'Table';
+        layout === 'BOARD'
+          ? 'Board'
+          : layout === 'CALENDAR'
+            ? 'Calendar'
+            : layout === 'TIMELINE'
+              ? 'Timeline'
+              : layout === 'GALLERY'
+                ? 'Gallery'
+                : 'Table';
       const result = await requestJson(`/api/pages/${encodeURIComponent(pageId)}/views`, 'POST', {
         name,
         layout,
@@ -425,7 +436,7 @@ export function DatabaseContainer({
     <section className="space-y-4" aria-label="Database">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1 border-b border-[var(--border-hairline)]">
-          {(['TABLE', 'BOARD', 'CALENDAR'] as const).map((layout) => {
+          {(['TABLE', 'BOARD', 'CALENDAR', 'TIMELINE', 'GALLERY'] as const).map((layout) => {
             const view = views.find((candidate) => candidate.layout === layout);
             const isActive =
               (view?.id ?? 'local-table') === activeViewId ||
@@ -437,11 +448,20 @@ export function DatabaseContainer({
                     ? 'border-[var(--ink-primary)] text-[var(--ink-primary)]'
                     : 'border-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-hover)]'
                 }`}
+                aria-pressed={isActive}
                 key={layout}
                 onClick={() => void createView(layout)}
                 type="button"
               >
-                {layout === 'BOARD' ? 'Board' : layout === 'CALENDAR' ? 'Calendar' : 'Table'}
+                {layout === 'BOARD'
+                  ? 'Board'
+                  : layout === 'CALENDAR'
+                    ? 'Calendar'
+                    : layout === 'TIMELINE'
+                      ? 'Timeline'
+                      : layout === 'GALLERY'
+                        ? 'Gallery'
+                        : 'Table'}
               </button>
             );
           })}
@@ -690,6 +710,15 @@ export function DatabaseContainer({
       )}
       {activeView.layout === 'CALENDAR' && (
         <CalendarView property={dateProperty} rows={visibleRows} />
+      )}
+      {activeView.layout === 'TIMELINE' && (
+        <TimelineView properties={properties} rows={visibleRows} />
+      )}
+      {activeView.layout === 'GALLERY' && (
+        <GalleryView
+          properties={properties.filter((property) => visiblePropertyIds.includes(property.id))}
+          rows={visibleRows}
+        />
       )}
 
       {error && <p className="text-sm text-[var(--status-danger)]" role="alert">{error}</p>}

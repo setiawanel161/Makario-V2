@@ -6,8 +6,8 @@
 
 ## 1. Current Status & Active Target
 
-- **Current Phase:** PR #4 Block-Based Rich Editor & Real-Time Delta Sync implemented and verified.
-- **Active Target:** **PR #5 — Multi-View Relational Database, Template Cloner & Fidelity Audit**
+- **Current Phase:** PR #5 Multi-View Relational Database, Template Cloner & Fidelity Audit implemented and verified.
+- **Active Target:** **PR #6 — Production Hardening, Timeline/Gallery Views, Virtualization & Playwright E2E**
 - **Tech Stack:** Next.js 15 (App Router), TypeScript (Strict), Tailwind CSS, PostgreSQL 16, Prisma ORM, Auth.js v5, Zustand + Dexie.js (IndexedDB), Vitest.
 
 ---
@@ -63,6 +63,14 @@
 - [x] Add multi-stage Docker image and Postgres 16 Compose deployment with health check and migration deployment
 - [x] Add database-view, template-cloner, public-isolation, and billing webhook tests; execute the PM/design fidelity audit in `docs/audit-diff.md`
 - [x] Pass Prisma validation/generation, strict TypeScript, ESLint, all 44 Vitest tests, production build, Docker Compose validation, and app/migration image builds
+
+### PR #6: Production Hardening, Timeline/Gallery, Virtualization & Browser E2E
+- [x] Apply compatible dependency security fixes without upgrading Next.js 15 or Prisma 6; final `npm audit` reports zero vulnerabilities
+- [x] Add HTTP security headers and automatic Table row virtualization above 100 rows, with coverage at the 5,000-row limit
+- [x] Implement Date-property Timeline and themed Gallery layouts; connect both to the five-layout database switcher
+- [x] Add Playwright Chromium configuration and end-to-end coverage for health/security headers, demo onboarding, editor/TODO XP and persistence, all database layouts, publishing, and template cloning
+- [x] Exclude `tests/e2e/**` from Vitest discovery and update the fidelity audit
+- [x] Pass Prisma validation/generation, strict TypeScript, ESLint, all 46 Vitest tests, production build, Playwright E2E, and dependency audit
 
 ---
 
@@ -122,3 +130,4 @@
 | `PR #3` | `2026-11-15` | `copilot/pr-3-auth-workspace-shell` (Auth, RBAC & Workspace Shell; based on PR #2) | `src/server/auth/`, workspace provisioning service and preset catalog, health/workspace/page/gamification APIs, login/onboarding/workspace UI, RBAC and provisioning tests, this status file | `Passed: Prisma validate/generate, TypeScript, 25 Vitest tests, ESLint, production build` |
 | `PR #4` | `2026-11-15` | `copilot/pr-4-editor-sync` (Block Editor & Delta Sync; based on PR #3, targets main) | Full initial schema baseline migration; page/push/pull/SSE/search/publish routes; block editor, slash menu, search modal, XP toast, delta client; sync and editor tests; this status file | `Passed: Prisma reset/deploy/validate/generate, TypeScript, 36 Vitest tests, ESLint, production build` |
 | `PR #5` | `2026-11-15` | `copilot/pr-5-database-template` (Database Views, Template Cloner, Public Web & Deployment; targets main) | Typed property/view APIs and client; database Table/Board/Calendar; transactional template cloner; public API/page and duplicate CTA; Stripe/Midtrans webhook; Docker/Compose; fidelity audit and tests | `Passed: Prisma validate/generate, TypeScript, 44 Vitest tests, ESLint, production build, Docker Compose config and images` |
+| `PR #6` | `2026-11-16` | `copilot/pr-6-production-hardening` (Production Hardening, Timeline/Gallery, Virtualization & Playwright E2E; targets main) | Security headers and dependency fixes; virtualized Table, Timeline/Gallery views and switcher; Playwright config and core flows; login/publication E2E support; audit and status docs | `Passed: Prisma validate/generate, TypeScript, 46 Vitest tests, ESLint, production build, Chromium E2E, npm audit (0 vulnerabilities)` |

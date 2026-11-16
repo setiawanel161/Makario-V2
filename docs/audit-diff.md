@@ -1,12 +1,15 @@
-# PR #5 Fidelity Audit
+# PR #6 Production Hardening & Fidelity Audit
 
 ## Scope and result
 
-This audit compares the implemented PR #5 work with the database, publishing,
-template, billing, and visual-system requirements in
+This audit records PR #6 production hardening and closes the remaining database
+layout and large-table rendering gaps identified by the PR #5 audit. It compares
+the delivered work with the database, publishing, template, billing, and
+visual-system requirements in
 [`replica-pm.md`](./replica-pm.md) and [`replica-design.md`](./replica-design.md).
-The requested PR #5 scope is implemented. The wider product specifications still
-contain work intentionally outside this PR, listed under Open gaps.
+The requested PR #6 scope is implemented and verified. Broader product
+specification work remains intentionally outside this PR, as listed under Open
+gaps.
 
 ## Requirements checked
 
@@ -21,14 +24,13 @@ contain work intentionally outside this PR, listed under Open gaps.
 | Billing | Stripe timestamped HMAC-SHA256 signatures and Midtrans SHA-512 signatures are verified before plan-tier synchronization. Invalid or missing signatures are rejected. | Pass |
 | Design system | New React components use semantic light/dark CSS tokens and the existing typography scale. No raw hex color literals were introduced in database/public components. | Pass |
 | Deployment | Multi-stage Next.js standalone image and Compose Postgres 16 service include database health checks and migration deployment on app startup. Compose configuration validates. | Pass |
+| Timeline and Gallery | Database layout switcher exposes all five layouts. Timeline visualizes rows against a configured Date property; Gallery renders responsive cards with cover/icon and compact properties, using semantic theme tokens. | Pass |
+| Large table rendering | Table rows virtualize automatically above 100 rows with overscan; focused tests cover threshold behavior and 5,000 rows. The database query remains bounded at 5,000 rows. | Pass |
+| Production hardening | Next.js sends frame, MIME-sniffing, referrer, and permissions security headers. `npm audit fix` retains Next.js 15 and Prisma 6 compatibility; the final dependency audit reports no vulnerabilities. | Pass |
+| Browser verification | Playwright Chromium exercises health/security headers, demo sign-in and workspace provisioning, page/block creation, slash-command TODO and XP, reload persistence, all five layouts, publishing, and template cloning. | Pass |
 
-## Open gaps outside the requested PR #5 scope
+## Open gaps outside the requested PR #6 scope
 
-- The product roadmap also names Timeline and Gallery layouts; this PR implements
-  the specifically requested Table, Kanban, and Calendar layouts.
-- Database views are loaded with a bounded 5,000-row query and rendered without
-  virtualization or pagination. The PM specification calls for paginated or
-  virtualized handling at this scale.
 - Formula support is intentionally limited to arithmetic expressions and
   property references; it is not a general-purpose formula language.
 - The database UI does not yet expose inline row comments, chart widgets,
@@ -40,10 +42,12 @@ contain work intentionally outside this PR, listed under Open gaps.
 
 ## Verification
 
-- `npx prisma validate` and `npx prisma generate`
+- `npx prisma validate` and `npx prisma generate` — passed
 - `npx tsc --noEmit`
-- `npm run lint`
-- `CI=true npm test` — 44 tests passed
-- `npm run build`
+- `npm run lint` — passed
+- `CI=true npm test` — 46 tests passed across 14 suites
+- `npm run build` — passed
+- `npm run test:e2e` — Chromium suite passed
+- `npm audit` — 0 vulnerabilities
 - `docker compose config --quiet`
 - `docker compose build app migrate`

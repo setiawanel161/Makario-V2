@@ -26,6 +26,7 @@ export interface DatabaseRowData {
   id: string;
   title: string;
   icon: string | null;
+  coverUrl?: string | null;
   orderIndex: string;
   revision: string;
   properties: Record<string, JsonValue>;
