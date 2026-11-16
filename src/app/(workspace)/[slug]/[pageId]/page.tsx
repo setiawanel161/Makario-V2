@@ -49,6 +49,7 @@ export default async function WorkspacePage({
       isPrivate: true,
       isPublished: true,
       publicSlug: true,
+      allowTemplateClone: true,
       revision: true,
       updatedAt: true,
       blocks: {
@@ -82,6 +83,7 @@ export default async function WorkspacePage({
     isPrivate: page.isPrivate,
     isPublished: page.isPublished,
     publicSlug: page.publicSlug,
+    allowTemplateClone: page.allowTemplateClone,
     revision: page.revision.toString(10),
     updatedAt: page.updatedAt.toISOString(),
   };
@@ -143,6 +145,7 @@ export default async function WorkspacePage({
           id: true,
           title: true,
           icon: true,
+          coverUrl: true,
           orderIndex: true,
           revision: true,
           rowPropertyValues: {

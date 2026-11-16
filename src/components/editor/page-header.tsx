@@ -8,6 +8,7 @@ import type { JsonObject } from '@/types/workspace';
 const publishResponseSchema = z.object({
   isPublished: z.boolean(),
   publicSlug: z.string().nullable(),
+  allowTemplateClone: z.boolean(),
 });
 
 export interface EditorPageHeaderData {
@@ -21,6 +22,7 @@ export interface EditorPageHeaderData {
   isPrivate: boolean;
   isPublished: boolean;
   publicSlug: string | null;
+  allowTemplateClone: boolean;
 }
 
 const PAGE_ICONS = ['📄', '📝', '📚', '💡', '🎯', '🌱', '🧭', '✨'];
@@ -32,22 +34,30 @@ export function PageHeader({
 }: {
   page: EditorPageHeaderData;
   onChange: (changes: JsonObject) => void;
-  onPublicationChange: (state: { isPublished: boolean; publicSlug: string | null }) => void;
+  onPublicationChange: (state: {
+    isPublished: boolean;
+    publicSlug: string | null;
+    allowTemplateClone: boolean;
+  }) => void;
 }): React.JSX.Element {
   const [title, setTitle] = useState(page.title);
   const [shareOpen, setShareOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [allowTemplateClone, setAllowTemplateClone] = useState(page.allowTemplateClone);
 
-  async function setPublished(isPublished: boolean): Promise<void> {
+  async function setPublished(
+    isPublished: boolean,
+    allowTemplateClone = page.allowTemplateClone,
+  ): Promise<void> {
     setBusy(true);
     setShareError(null);
     try {
       const response = await fetch(`/api/pages/${encodeURIComponent(page.id)}/publish`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ isPublished }),
+        body: JSON.stringify({ isPublished, allowTemplateClone }),
       });
       const parsed = publishResponseSchema.safeParse(await response.json());
       if (!response.ok || !parsed.success) {
@@ -57,6 +67,7 @@ export function PageHeader({
             : 'This page could not be published.',
         );
       }
+      setAllowTemplateClone(parsed.data.allowTemplateClone);
       onPublicationChange(parsed.data);
     } catch (error) {
       setShareError(error instanceof Error ? error.message : 'This page could not be published.');
@@ -192,41 +203,64 @@ export function PageHeader({
             <p className="mt-3 rounded-md bg-[var(--bg-hover)] px-3 py-2 text-xs text-[var(--ink-secondary)]">
               Private pages cannot be published to the web.
             </p>
-          ) : page.isPublished && page.publicSlug ? (
-            <div className="mt-3 space-y-2">
-              <input
-                aria-label="Public page link"
-                className="w-full rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] px-2 py-2 text-xs"
-                readOnly
-                value={`/p/${page.publicSlug}`}
-              />
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="flex-1 rounded-md bg-[var(--accent-primary)] px-3 py-2 text-xs font-medium text-[var(--bg-canvas)] hover:bg-[var(--accent-primary-hover)]"
-                  onClick={() => void copyLink()}
-                >
-                  {copied ? 'Copied' : 'Copy link'}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md border border-[var(--border-hairline)] px-3 py-2 text-xs hover:bg-[var(--bg-hover)]"
-                  disabled={busy}
-                  onClick={() => void setPublished(false)}
-                >
-                  Unpublish
-                </button>
-              </div>
-            </div>
           ) : (
-            <button
-              type="button"
-              className="mt-3 w-full rounded-md bg-[var(--accent-primary)] px-3 py-2 text-xs font-medium text-[var(--bg-canvas)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-60"
-              disabled={busy}
-              onClick={() => void setPublished(true)}
-            >
-              {busy ? 'Publishing…' : 'Publish page'}
-            </button>
+            <div>
+              <label className="mt-3 flex items-center gap-2 text-xs text-[var(--ink-secondary)]">
+                <input
+                  checked={allowTemplateClone}
+                  disabled={busy}
+                  onChange={(event) => setAllowTemplateClone(event.target.checked)}
+                  type="checkbox"
+                />
+                Allow Duplicate as Template
+              </label>
+              {page.isPublished && page.publicSlug ? (
+                <div className="mt-3 space-y-2">
+                  <input
+                    aria-label="Public page link"
+                    className="w-full rounded-md border border-[var(--border-hairline)] bg-[var(--bg-canvas)] px-2 py-2 text-xs"
+                    readOnly
+                    value={`/p/${page.publicSlug}`}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="flex-1 rounded-md bg-[var(--accent-primary)] px-3 py-2 text-xs font-medium text-[var(--bg-canvas)] hover:bg-[var(--accent-primary-hover)]"
+                      onClick={() => void copyLink()}
+                    >
+                      {copied ? 'Copied' : 'Copy link'}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-[var(--border-hairline)] px-3 py-2 text-xs hover:bg-[var(--bg-hover)]"
+                      disabled={busy}
+                      onClick={() => void setPublished(false, allowTemplateClone)}
+                    >
+                      Unpublish
+                    </button>
+                  </div>
+                  {allowTemplateClone !== page.allowTemplateClone && (
+                    <button
+                      type="button"
+                      className="w-full rounded-md border border-[var(--border-hairline)] px-3 py-2 text-xs hover:bg-[var(--bg-hover)]"
+                      disabled={busy}
+                      onClick={() => void setPublished(true, allowTemplateClone)}
+                    >
+                      Save template settings
+                    </button>
+                  )}
+                </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="mt-3 w-full rounded-md bg-[var(--accent-primary)] px-3 py-2 text-xs font-medium text-[var(--bg-canvas)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-60"
+                    disabled={busy}
+                    onClick={() => void setPublished(true, allowTemplateClone)}
+                  >
+                    {busy ? 'Publishing…' : 'Publish page'}
+                  </button>
+                )}
+            </div>
           )}
           {shareError && <p role="alert" className="mt-2 text-xs text-[var(--status-danger)]">{shareError}</p>}
         </section>

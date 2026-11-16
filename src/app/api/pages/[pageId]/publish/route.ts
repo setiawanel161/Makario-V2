@@ -4,7 +4,10 @@ import { authorizationErrorResponse, getAuthenticatedUserId } from '@/server/aut
 import { requireWorkspaceRole } from '@/server/auth/rbac';
 import { prisma } from '@/server/db/prisma';
 
-const publishSchema = z.object({ isPublished: z.boolean() });
+const publishSchema = z.object({
+  isPublished: z.boolean(),
+  allowTemplateClone: z.boolean().optional(),
+});
 
 export async function POST(
   request: Request,
@@ -34,6 +37,7 @@ export async function POST(
       createdById: true,
       isPublished: true,
       publicSlug: true,
+      allowTemplateClone: true,
     },
   });
   if (page === null) {
@@ -54,8 +58,16 @@ export async function POST(
       return Response.json({ error: 'Only the page creator or a workspace admin can publish this page.' }, { status: 403 });
     }
 
-    if (page.isPublished === parsed.data.isPublished) {
-      return Response.json({ isPublished: page.isPublished, publicSlug: page.publicSlug });
+    const allowTemplateClone = parsed.data.allowTemplateClone ?? page.allowTemplateClone;
+    if (
+      page.isPublished === parsed.data.isPublished &&
+      page.allowTemplateClone === allowTemplateClone
+    ) {
+      return Response.json({
+        isPublished: page.isPublished,
+        publicSlug: page.publicSlug,
+        allowTemplateClone: page.allowTemplateClone,
+      });
     }
 
     const publicSlug = parsed.data.isPublished
@@ -72,6 +84,7 @@ export async function POST(
               fieldTimestamps: true,
               isPrivate: true,
               isPublished: true,
+              allowTemplateClone: true,
             },
           }),
           transaction.workspace.findUnique({
@@ -97,6 +110,7 @@ export async function POST(
             : {};
         fieldTimestamps.isPublished = now.toISOString();
         fieldTimestamps.publicSlug = now.toISOString();
+        fieldTimestamps.allowTemplateClone = now.toISOString();
 
         const revision = workspace.serverRevision + BigInt(1);
         const updated = await transaction.page.updateMany({
@@ -106,10 +120,12 @@ export async function POST(
             deletedAt: null,
             isPrivate: false,
             isPublished: page.isPublished,
+            allowTemplateClone: page.allowTemplateClone,
           },
           data: {
             isPublished: parsed.data.isPublished,
             publicSlug,
+            allowTemplateClone,
             revision,
             fieldTimestamps,
           },
@@ -121,7 +137,12 @@ export async function POST(
           where: { id: page.workspaceId },
           data: { serverRevision: revision },
         });
-        return { isPublished: parsed.data.isPublished, publicSlug, revision: revision.toString(10) };
+        return {
+          isPublished: parsed.data.isPublished,
+          publicSlug,
+          allowTemplateClone,
+          revision: revision.toString(10),
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );

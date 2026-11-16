@@ -1,5 +1,7 @@
 'use client';
 
+import { useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { JsonValue, PropertyConfigPayload } from '@/types/workspace';
 import { calculateRollup, evaluateFormula, type DatabaseViewRow } from '@/lib/database/view-utils';
 import type { DatabasePropertyData, DatabaseRowData } from './database-types';
@@ -153,17 +155,57 @@ export function TableView({
     visibleProperties === undefined
       ? properties
       : properties.filter((property) => visibleProperties.includes(property.id));
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualized = rows.length > 100;
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 44,
+    initialRect: { height: 600, width: 1024 },
+    overscan: 8,
+    enabled: virtualized,
+  });
   const viewRows: DatabaseViewRow[] = calculationRows.map((row) => ({
     id: row.id,
     title: row.title,
     orderIndex: row.orderIndex,
     properties: row.properties,
   }));
+  const viewRowsById = new Map(viewRows.map((row) => [row.id, row]));
+  const gridTemplateColumns = `minmax(13rem, 1fr) repeat(${displayedProperties.length}, minmax(10rem, 1fr)) 3rem`;
+  const renderedRows = virtualized
+    ? virtualizer.getVirtualItems().flatMap((item) => {
+        const row = rows[item.index];
+        return row === undefined ? [] : [{ row, index: item.index, start: item.start }];
+      })
+    : rows.map((row, index) => ({ row, index, start: 0 }));
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)]">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-[var(--bg-sidebar)] text-[var(--ink-secondary)]">
-          <tr>
+    <div
+      className={`rounded-lg border border-[var(--border-hairline)] ${
+        virtualized ? 'max-h-[70vh] overflow-auto' : 'overflow-x-auto'
+      }`}
+      ref={scrollRef}
+    >
+      <table
+        className="w-full border-collapse text-left text-sm"
+        style={virtualized ? { display: 'block', minWidth: '100%' } : undefined}
+      >
+        <thead
+          className="bg-[var(--bg-sidebar)] text-[var(--ink-secondary)]"
+          style={
+            virtualized
+              ? { display: 'block', position: 'sticky', top: 0, zIndex: 1 }
+              : undefined
+          }
+        >
+          <tr
+            style={
+              virtualized
+                ? { display: 'grid', gridTemplateColumns, minWidth: 'max-content' }
+                : undefined
+            }
+          >
             <th className="min-w-52 border-b border-[var(--border-hairline)] px-3 py-2 font-medium">
               Name
             </th>
@@ -186,9 +228,37 @@ export function TableView({
             </th>
           </tr>
         </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr className="border-b border-[var(--border-hairline)] last:border-0" key={row.id}>
+        <tbody
+          style={
+            virtualized
+              ? {
+                  display: 'block',
+                  height: `${virtualizer.getTotalSize()}px`,
+                  position: 'relative',
+                }
+              : undefined
+          }
+        >
+          {renderedRows.map(({ row, index, start }) => (
+            <tr
+              aria-rowindex={index + 2}
+              className="border-b border-[var(--border-hairline)] last:border-0"
+              key={row.id}
+              style={
+                virtualized
+                  ? {
+                      display: 'grid',
+                      gridTemplateColumns,
+                      left: 0,
+                      minWidth: 'max-content',
+                      position: 'absolute',
+                      top: 0,
+                      transform: `translateY(${start}px)`,
+                      width: '100%',
+                    }
+                  : undefined
+              }
+            >
               <th className="min-w-52 px-2 py-1 font-normal">
                 <input
                   aria-label="Row title"
@@ -205,14 +275,14 @@ export function TableView({
                 if (property.config.kind === 'formula') {
                   value = evaluateFormula(property.config.expression, row.properties);
                 } else if (property.config.kind === 'rollup') {
-                  const viewRow = viewRows.find((candidate) => candidate.id === row.id);
+                  const viewRow = viewRowsById.get(row.id);
                   value = viewRow
                     ? calculateRollup(
-                    viewRow,
-                    property.config.relationPropertyId,
-                    property.config.targetPropertyId,
-                    property.config.aggregation,
-                    viewRows,
+                        viewRow,
+                        property.config.relationPropertyId,
+                        property.config.targetPropertyId,
+                        property.config.aggregation,
+                        viewRows,
                       )
                     : 0;
                 }
@@ -234,7 +304,7 @@ export function TableView({
               </td>
             </tr>
           ))}
-          {rows.length === 0 && (
+          {!virtualized && rows.length === 0 && (
             <tr>
               <td
                 className="px-4 py-8 text-center text-sm text-[var(--ink-muted)]"

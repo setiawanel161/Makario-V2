@@ -66,7 +66,7 @@ export function RecursivePageTree({
                 />
               </button>
               <Link
-                href={`/${workspaceSlug}?page=${encodeURIComponent(page.id)}`}
+                href={`/${workspaceSlug}/${encodeURIComponent(page.id)}`}
                 className="flex min-w-0 flex-1 items-center gap-2 py-1 text-[var(--ink-primary)]"
                 title={page.title}
               >
